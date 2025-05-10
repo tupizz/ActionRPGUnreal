@@ -18,6 +18,7 @@ ASCharacter::ASCharacter()
 	SpringArmComp->SocketOffset = FVector(0.0f, 0.0f, 30.0f); // Raise camera position
 	
 	InteractionComp = CreateDefaultSubobject<USInteractionComponent>(TEXT("InteractionComp"));
+	AttackAnim = CreateDefaultSubobject<UAnimMontage>(TEXT("UAnimMontage"));
  	
 	/* Camera control setup:
 	* bUsePawnControlRotation = true: Allows the spring arm (camera boom) to rotate with mouse/controller input
@@ -84,7 +85,7 @@ void ASCharacter::MoveRigth(float X)
 	AddMovementInput(RightVector, X);
 }
 
-void ASCharacter::PrimaryAttack()
+void ASCharacter::PrimaryAttack_TimeElapsed()
 {
 	FVector HandLocation = GetMesh()->GetSocketLocation("Muzzle_01");
 	FTransform SpawnTM = FTransform(GetActorRotation(), HandLocation);
@@ -93,11 +94,16 @@ void ASCharacter::PrimaryAttack()
 	GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnTM, SpawnParams);
 }
 
+void ASCharacter::PrimaryAttack()
+{
+	PlayAnimMontage(AttackAnim);
+	GetWorldTimerManager().SetTimer(TimerHandle_PrimaryAttack, this, &ASCharacter::PrimaryAttack_TimeElapsed, 0.2f);
+}
+
 // Called every frame
 void ASCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 void ASCharacter::PrimaryInteract()

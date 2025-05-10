@@ -10,6 +10,7 @@ class USInteractionComponent;
 // when declaring pointers we don't need to care about the actual type
 class UCameraComponent;
 class USpringArmComponent;
+class UAnimMontage;
 
 UCLASS()
 class MYCPLUSPLUSPROJECT_API ASCharacter : public ACharacter
@@ -23,26 +24,37 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, Category="Attack")
 	UCameraComponent* CameraComp; // Pointer only needs to know the type exists
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, Category="Attack")
 	USpringArmComponent* SpringArmComp; // this is used to control the camera
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category="Attack")
 	TSubclassOf<AActor> ProjectileClass;
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, Category="Attack")
 	USInteractionComponent *InteractionComp;
 
+	UPROPERTY(EditAnywhere, Category="Attack")
+	UAnimMontage *AttackAnim;
+	
+	FTimerHandle TimerHandle_PrimaryAttack;
+
 	void MoveForward(float Value);
+
 	void MoveRigth(float X);
+
+	void PrimaryAttack_TimeElapsed();
+
 	void PrimaryAttack();
 
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
 	void PrimaryInteract();
+	
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
