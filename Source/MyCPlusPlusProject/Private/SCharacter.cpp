@@ -82,6 +82,15 @@ void ASCharacter::MoveRigth(float X)
 	AddMovementInput(RightVector, X);
 }
 
+void ASCharacter::PrimaryAttack()
+{
+	FVector HandLocation = GetMesh()->GetSocketLocation("Muzzle_01");
+	FTransform SpawnTM = FTransform(GetActorRotation(), HandLocation);
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnTM, SpawnParams);
+}
+
 // Called every frame
 void ASCharacter::Tick(float DeltaTime)
 {
@@ -99,7 +108,6 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	
 	PlayerInputComponent->BindAxis("Turn", this, &ASCharacter::AddControllerYawInput);
 	PlayerInputComponent->BindAxis("LookUp", this, &ASCharacter::AddControllerPitchInput);
-	// PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	// PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	// PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ACharacter::Crouch);
 	// PlayerInputComponent->BindAction("Crouch", IE_Released, this, &ACharacter::UnCrouch);
@@ -107,4 +115,8 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	// PlayerInputComponent->BindAction("ToggleGravity", IE_Pressed, this, &ACharacter::ToggleGravity);
 	// PlayerInputComponent->BindAction("ToggleGravity", IE_Released, this, &ACharacter::ToggleGravity);
 	// PlayerInputComponent->BindAction("StartSprint", IE_Pressed, this, &ACharacter::StartSprint);
+
+	PlayerInputComponent->BindAction("PrimaryAttack", IE_Pressed, this, &ASCharacter::PrimaryAttack);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+	
 }
