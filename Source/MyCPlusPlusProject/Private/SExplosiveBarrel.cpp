@@ -34,16 +34,17 @@ ASExplosiveBarrel::ASExplosiveBarrel()
 	MeshComp->SetCollisionProfileName("PhysicsActor"); 
 	MeshComp->OnComponentHit.AddDynamic(this, &ASExplosiveBarrel::OnHit);
 
+	// Valores padrão para os parâmetros da explosão
+	ExplosionRadius = 1000.0f;
+	ExplosionImpulse = 2000.0f;
+
 	RadialForceComp = CreateDefaultSubobject<URadialForceComponent>(TEXT("RadialForceComp"));
 	RadialForceComp->SetupAttachment(MeshComp);
 	RadialForceComp->bImpulseVelChange = true;
 	RadialForceComp->bAutoActivate = false;
-	RadialForceComp->Radius = 1000.0f;
-	RadialForceComp->ForceStrength = 20000.0f;
-	
-	// Valores padrão para os parâmetros da explosão
-	ExplosionRadius = 500.0f;
-	ExplosionImpulse = 2000.0f;
+	RadialForceComp->Radius = ExplosionRadius;
+	RadialForceComp->ForceStrength = ExplosionImpulse;
+
 	bExploded = false;
 }
 
@@ -64,6 +65,20 @@ void ASExplosiveBarrel::Explode()
         UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ExplosionEffect, GetActorLocation(), FRotator::ZeroRotator, FVector(20.0f));
     }
 
+	// Draw debug sphere to visualize explosion radius
+	DrawDebugSphere(
+		GetWorld(),
+		GetActorLocation(),
+		ExplosionRadius,
+		32,              // Number of segments
+		FColor::Red,     // Color
+		false,           // Persistent lines
+		5.0f,            // Duration
+		0,               // Depth priority
+		2.0f             // Thickness
+	);
+
+
     // Get all overlapping actors in radius
     TArray<AActor*> OverlappingActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), OverlappingActors);
@@ -72,22 +87,35 @@ void ASExplosiveBarrel::Explode()
     for(auto* Actor : OverlappingActors)
     {
     	
-        if(Actor && FlameEffect)
+        if(Actor && FlameEffect && Actor != this)
         {
-            UStaticMeshComponent* FindMeshComp = Cast<UStaticMeshComponent>(Actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
-            if(FindMeshComp)
-            {
-				// Ignore SCharacter class
-				if (Actor->IsA(ASCharacter::StaticClass()))
-				{
-					UE_LOG(LogTemp, Log, TEXT("Ignoring SCharacter class"));
-					continue;
-				}
+        	// Calculate distance to actor
+        	float Distance = FVector::Distance(GetActorLocation(), Actor->GetActorLocation());
+
+        	if (Distance <= ExplosionRadius)
+        	{
+        		// Log the distance for debugging
+        		UE_LOG(LogTemp, Log, TEXT("Actor: %s at distance: %f"), *GetNameSafe(Actor), Distance);
+        	
+        		UStaticMeshComponent* FindMeshComp = Cast<UStaticMeshComponent>(Actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+        		if(FindMeshComp)
+        		{
+        			// Ignore SCharacter class
+        			if (Actor->IsA(ASCharacter::StaticClass()))
+        			{
+        				UE_LOG(LogTemp, Log, TEXT("Ignoring SCharacter class"));
+        				continue;
+        			}
 				
-                UE_LOG(LogTemp, Log, TEXT("Applying flame effect to: %s"), *GetNameSafe(Actor));
-                UGameplayStatics::SpawnEmitterAttached(FlameEffect, FindMeshComp, NAME_None, 
-                    FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, true);
-            }
+        			UE_LOG(LogTemp, Log, TEXT("Applying flame effect to: %s"), *GetNameSafe(Actor));
+        			UGameplayStatics::SpawnEmitterAttached(FlameEffect, FindMeshComp, NAME_None, 
+						FVector::ZeroVector, FRotator::ZeroRotator, EAttachLocation::SnapToTarget, true);
+        		}
+        		else
+        		{
+        			UE_LOG(LogTemp, Log, TEXT("Actor: %s at distance: %f outside radius"), *GetNameSafe(Actor), Distance);
+        		}
+        	}
         }
     }
 

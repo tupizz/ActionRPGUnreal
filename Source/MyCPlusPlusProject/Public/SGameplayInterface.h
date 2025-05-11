@@ -19,6 +19,6 @@ class MYCPLUSPLUSPROJECT_API ISGameplayInterface
 
 public:
     // Add interface functions here
-    UFUNCTION(BlueprintNativeEvent)
+    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Gameplay")
     void Interact(APawn* InstigatorPawn);
 };
