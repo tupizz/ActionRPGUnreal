@@ -1,0 +1,321 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+
+#include "SCharacter.h"
+
+#include "SInteractionComponent.h"
+#include "Camera/CameraComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+
+// Sets default values
+ASCharacter::ASCharacter()
+{
+ 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	PrimaryActorTick.bCanEverTick = true;
+
+	SpringArmComp = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComp"));
+	SpringArmComp->SocketOffset = FVector(0.0f, 0.0f, 30.0f); // Raise camera position
+	
+	InteractionComp = CreateDefaultSubobject<USInteractionComponent>(TEXT("InteractionComp"));
+	AttackAnim = CreateDefaultSubobject<UAnimMontage>(TEXT("UAnimMontage"));
+ 	
+	/* Camera control setup:
+	* bUsePawnControlRotation = true: Allows the spring arm (camera boom) to rotate with mouse/controller input
+	* This enables looking around by rotating the camera while keeping the character facing forward
+	*/
+	SpringArmComp->bUsePawnControlRotation = true;
+	SpringArmComp->SetupAttachment(RootComponent);
+	
+	CameraComp = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComp"));
+	CameraComp->SetupAttachment(SpringArmComp);
+	
+	/* Character rotation setup:
+	* bUseControllerRotationYaw = false: Prevents the character from rotating with the camera
+	* This creates a "strafe" movement style where character can move sideways while looking in different directions
+	*/
+	bUseControllerRotationYaw = false;
+
+	/* Character movement setup:
+	* bOrientRotationToMovement = true: Rotate character to movement direction
+	* This allows the character to turn to face the direction it is moving in instead of the direction it is facing
+	*/
+	GetCharacterMovement()->bOrientRotationToMovement = true; // Rotate character to movement direction
+}
+
+// Called when the game starts or when spawned
+void ASCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+}
+
+void ASCharacter::MoveForward(float Value)
+{
+	FRotator ControlRot = GetControlRotation();
+	// we are only interested in the yaw rotation(yaw-> horizontal)
+	ControlRot.Pitch = 0.0f;
+	ControlRot.Roll = 0.0f;
+	
+	AddMovementInput(ControlRot.Vector(), Value);
+}
+
+void ASCharacter::MoveRigth(float X)
+{
+	FRotator ControlRot = GetControlRotation();
+	// we are only interested in the yaw rotation(yaw-> horizontal)
+	ControlRot.Pitch = 0.0f;
+	ControlRot.Roll = 0.0f;
+	
+	// x = forward (red)
+	// y = right (green)
+	// z = up (blue)
+	
+	// Get the right vector (facing right relative to character's current view direction) 
+	// by creating a rotation matrix from the control rotation and getting its Y axis
+	FVector RightVector = FRotationMatrix(ControlRot).GetScaledAxis(EAxis::Y);
+	
+	// Apply movement input in the right direction scaled by input value X
+	AddMovementInput(RightVector, X);
+}
+
+void ASCharacter::PrimaryAttack_TimeElapsed()
+{
+	// Get the player's controller, which handles input and viewport information
+	// Cast is needed to convert from base Controller to PlayerController type
+	auto* PC = Cast<APlayerController>(GetController());
+	if (!PC) return;
+
+	// Get the viewport (screen) dimensions to find the center point
+	int32 VX, VY;
+	PC->GetViewportSize(VX, VY);
+
+	// Convert the 2D screen center point into a 3D world location and direction
+	// CamWorldLoc = Camera position in world space
+	// CamWorldDir = Direction camera is looking in world space 
+	FVector CamWorldLoc, CamWorldDir;
+	PC->DeprojectScreenPositionToWorld(VX * 0.5f, VY * 0.5f, CamWorldLoc, CamWorldDir);
+
+	// Create a line trace (raycast) from camera position to find what player is aiming at
+	// TraceEnd is 10000 units in camera's forward direction
+	FVector TraceEnd	= CamWorldLoc + CamWorldDir * 10000.0f;
+	FHitResult Hit; // Stores information about what the trace hits
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this); // Don't detect collisions with self
+
+	// Default aim point is far along camera direction
+	// If trace hits something, use that hit location instead
+	FVector AimPoint = TraceEnd;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, CamWorldLoc, TraceEnd, ECC_Visibility, QueryParams))
+	{
+		AimPoint = Hit.Location;
+	}
+
+	// Get the location where projectile should spawn (character's muzzle socket)
+	// Calculate direction from muzzle to aim point for projectile trajectory
+	FVector MuzzleLoc = GetMesh()->GetSocketLocation("Muzzle_01"); // muzzle is where the hand is
+	FVector FireDir   = (AimPoint - MuzzleLoc).GetSafeNormal(); // Normalized direction vector
+	FRotator FireRot  = FireDir.Rotation(); // Convert direction to rotation angles “which way something is pointing"
+
+	// Setup spawn parameters for creating the projectile
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Instigator = this; // Set this character as the projectile's owner 
+
+	// Spawn the projectile actor at muzzle location, pointing toward aim point
+	GetWorld()->SpawnActor<AActor>(
+		ProjectileClass,
+		MuzzleLoc,
+		FireRot,
+		SpawnParams
+	);
+
+	// Debug visualization helpers
+	// Green line would show camera to aim point
+	// DrawDebugLine(
+	//	 GetWorld(),
+	//	 CamWorldLoc,
+	//	 AimPoint,
+	//	 FColor::Green,
+	//	 false, 2.0f, 0, 1.0f
+	// );
+	
+	// Red line shows firing direction from muzzle
+	DrawDebugLine(
+		GetWorld(),
+		MuzzleLoc,
+		MuzzleLoc + FireDir * 2000.0f,
+		FColor::Red,
+		false, 2.0f, 0, 1.0f
+	);
+	
+	// Blue sphere marks the exact aim point in world
+	DrawDebugSphere(
+		GetWorld(),
+		AimPoint,
+		8.0f, 12,
+		FColor::Blue,
+		false, 2.0f
+	);
+}
+
+void ASCharacter::PrimaryAttack()
+{
+	PlayAnimMontage(AttackAnim);
+	GetWorldTimerManager().SetTimer(TimerHandle_PrimaryAttack, this, &ASCharacter::PrimaryAttack_TimeElapsed, 0.2f);
+}
+
+void ASCharacter::SpecialAttack()
+{
+	PlayAnimMontage(AttackAnim);
+	GetWorldTimerManager().SetTimer(TimerHandle_PrimaryAttack, this, &ASCharacter::SpecialAttack_TimeElapsed, 0.2f);
+}
+
+void ASCharacter::SpecialAttack_TimeElapsed()
+{
+	// check if class was set
+	if (!SpecialAttackClass) return;
+	
+	// Get the player's controller, which handles input and viewport information
+	// Cast is needed to convert from base Controller to PlayerController type
+	auto* PC = Cast<APlayerController>(GetController());
+	if (!PC) return;
+
+	// Get the viewport (screen) dimensions to find the center point
+	int32 VX, VY;
+	PC->GetViewportSize(VX, VY);
+
+	// Convert the 2D screen center point into a 3D world location and direction
+	// CamWorldLoc = Camera position in world space
+	// CamWorldDir = Direction camera is looking in world space 
+	FVector CamWorldLoc, CamWorldDir;
+	PC->DeprojectScreenPositionToWorld(VX * 0.5f, VY * 0.5f, CamWorldLoc, CamWorldDir);
+
+	// Create a line trace (raycast) from camera position to find what player is aiming at
+	// TraceEnd is 10000 units in camera's forward direction
+	FVector TraceEnd	= CamWorldLoc + CamWorldDir * 10000.0f;
+	FHitResult Hit; // Stores information about what the trace hits
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this); // Don't detect collisions with self
+
+	// Default aim point is far along camera direction
+	// If trace hits something, use that hit location instead
+	FVector AimPoint = TraceEnd;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, CamWorldLoc, TraceEnd, ECC_Visibility, QueryParams))
+	{
+		AimPoint = Hit.Location;
+	}
+
+	// Get the location where projectile should spawn (character's muzzle socket)
+	// Calculate direction from muzzle to aim point for projectile trajectory
+	FVector MuzzleLoc = GetMesh()->GetSocketLocation("Muzzle_01"); // muzzle is where the hand is
+	FVector FireDir   = (AimPoint - MuzzleLoc).GetSafeNormal(); // Normalized direction vector
+	FRotator FireRot  = FireDir.Rotation(); // Convert direction to rotation angles “which way something is pointing"
+
+	// Setup spawn parameters for creating the projectile
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Instigator = this; // Set this character as the projectile's owner 
+
+	// Spawn the projectile actor at muzzle location, pointing toward aim point
+	GetWorld()->SpawnActor<AActor>(
+		SpecialAttackClass,
+		MuzzleLoc,
+		FireRot,
+		SpawnParams
+	);
+}
+
+void ASCharacter::Dash()
+{
+	if (!DashClass) return;
+
+	// Get the player's controller, which handles input and viewport information
+	// Cast is needed to convert from base Controller to PlayerController type
+	auto* PC = Cast<APlayerController>(GetController());
+	if (!PC) return;
+
+	// Get the viewport (screen) dimensions to find the center point
+	int32 VX, VY;
+	PC->GetViewportSize(VX, VY);
+
+	// Convert the 2D screen center point into a 3D world location and direction
+	// CamWorldLoc = Camera position in world space
+	// CamWorldDir = Direction camera is looking in world space 
+	FVector CamWorldLoc, CamWorldDir;
+	PC->DeprojectScreenPositionToWorld(VX * 0.5f, VY * 0.5f, CamWorldLoc, CamWorldDir);
+
+	// Create a line trace (raycast) from camera position to find what player is aiming at
+	// TraceEnd is 10000 units in camera's forward direction
+	FVector TraceEnd	= CamWorldLoc + CamWorldDir * 10000.0f;
+	FHitResult Hit; // Stores information about what the trace hits
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this); // Don't detect collisions with self
+
+	// Default aim point is far along camera direction
+	// If trace hits something, use that hit location instead
+	FVector AimPoint = TraceEnd;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, CamWorldLoc, TraceEnd, ECC_Visibility, QueryParams))
+	{
+		AimPoint = Hit.Location;
+	}
+
+	// Get the location where projectile should spawn (character's muzzle socket)
+	// Calculate direction from muzzle to aim point for projectile trajectory
+	FVector MuzzleLoc = GetMesh()->GetSocketLocation("Muzzle_01"); // muzzle is where the hand is
+	FVector FireDir   = (AimPoint - MuzzleLoc).GetSafeNormal(); // Normalized direction vector
+	FRotator FireRot  = FireDir.Rotation(); // Convert direction to rotation angles “which way something is pointing"
+
+	// Setup spawn parameters for creating the projectile
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Instigator = this; // Set this character as the projectile's owner 
+
+	// Spawn the projectile actor at muzzle location, pointing toward aim point
+	GetWorld()->SpawnActor<AActor>(
+		DashClass,
+		MuzzleLoc,
+		FireRot,
+		SpawnParams
+	);
+}
+
+// Called every frame
+void ASCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+}
+
+void ASCharacter::PrimaryInteract()
+{
+	if (InteractionComp)
+	{
+		InteractionComp->PrimaryInteract();
+	}
+}
+
+// Called to bind functionality to input
+void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	
+	PlayerInputComponent->BindAxis("MoveForward", this, &ASCharacter::MoveForward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &ASCharacter::MoveRigth);
+	
+	PlayerInputComponent->BindAxis("Turn", this, &ASCharacter::AddControllerYawInput);
+	PlayerInputComponent->BindAxis("LookUp", this, &ASCharacter::AddControllerPitchInput);
+	// PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+	// PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ACharacter::Crouch);
+	// PlayerInputComponent->BindAction("Crouch", IE_Released, this, &ACharacter::UnCrouch);
+	// PlayerInputComponent->BindAction("JumpAndCrouch", IE_Pressed, this, &ACharacter::JumpAndCrouch);
+	// PlayerInputComponent->BindAction("ToggleGravity", IE_Pressed, this, &ACharacter::ToggleGravity);
+	// PlayerInputComponent->BindAction("ToggleGravity", IE_Released, this, &ACharacter::ToggleGravity);
+	// PlayerInputComponent->BindAction("StartSprint", IE_Pressed, this, &ACharacter::StartSprint);
+
+	PlayerInputComponent->BindAction("PrimaryAttack", IE_Pressed, this, &ASCharacter::PrimaryAttack);
+	PlayerInputComponent->BindAction("SpecialAttack", IE_Pressed, this, &ASCharacter::SpecialAttack);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+	PlayerInputComponent->BindAction("PrimaryInteract", IE_Pressed, this, &ASCharacter::PrimaryInteract);
+	PlayerInputComponent->BindAction("Dash", IE_Pressed, this, &ASCharacter::Dash);
+	
+}

@@ -1,0 +1,108 @@
+﻿// Fill out your copyright notice in the Description page of Project Settings.
+
+
+#include "SDashProjectile.h"
+
+#include "Components/SphereComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystemComponent.h" // For visual effects
+
+bool ASDashProjectile::bIsBeingSpawned = false;
+
+// Sets default values
+ASDashProjectile::ASDashProjectile()
+{
+	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// PrimaryActorTick.bCanEverTick = true;
+
+	TeleportDelay = 0.3f;
+	DetonateDelay = 0.5f;
+
+	// Create and setup the sphere collision component
+	SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
+	SphereComp->SetCollisionProfileName("Projectile"); // Set collision profile to "Projectile"
+	RootComponent = SphereComp; // Make the sphere the root component of this actor
+
+	// Create and setup the visual effects component
+	EffectComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("EffectComp"));
+	EffectComp->SetupAttachment(SphereComp); // Attach effects to the sphere component
+	
+	// Create and configure the projectile movement component
+	MovementComp = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("MovementComp"));
+	MovementComp->InitialSpeed = 2000.0f; // Set how fast the projectile moves
+	MovementComp->bRotationFollowsVelocity = true; // Make projectile rotate to match its movement direction
+	MovementComp->bInitialVelocityInLocalSpace = true; // Use local space for initial velocity
+}
+
+void ASDashProjectile::TeleportInstigator()
+{
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: TeleportInstigator instance with ID %s"), *UniqueID.ToString());
+
+	AActor* ActorToTeleport = GetInstigator();
+	// Check if instigator is valid before proceeding
+	if (!ActorToTeleport)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: Instigator is null, cannot teleport"));
+		Destroy();
+		return;
+	}
+
+
+	// Keep instigator rotation or it may end up jarring
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: Teleporting instigator"));
+	ActorToTeleport->TeleportTo(GetActorLocation(), ActorToTeleport->GetActorRotation(), false, false);
+
+	// Now we're ready to destroy self
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: About to destroy self"));
+	bool bDestroy = Destroy();
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: Destroyed %s"), bDestroy ? TEXT("true") : TEXT("false"));
+}
+
+void ASDashProjectile::Explode()
+{
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: Explode instance with ID %s"), *UniqueID.ToString());
+
+	GetWorldTimerManager().ClearTimer(TimerHandle_DelayedDetonate);
+	SetActorEnableCollision(false);
+
+	if (EndEffectComp)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), EndEffectComp, GetActorLocation(), GetActorRotation());
+	}
+
+	// Spawn actor at current location and rotation
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.Instigator = GetInstigator(); // Pass along the instigator to the new actor
+	
+	FTimerHandle TimerHandle_DelayedTeleport;
+	GetWorldTimerManager().SetTimer(TimerHandle_DelayedTeleport, this, &ASDashProjectile::TeleportInstigator, TeleportDelay);
+}
+
+// Called when the game starts or when spawned
+void ASDashProjectile::BeginPlay()
+{
+	SphereComp->IgnoreActorWhenMoving(GetInstigator(), true);
+
+	Super::BeginPlay();
+
+	UniqueID = FGuid::NewGuid();
+	UE_LOG(LogTemp, Warning, TEXT("SDashProjectile: Created with ID %s"), *UniqueID.ToString());
+
+	
+	// Spawn beginning effect if assigned
+	if (BeginningEffectComp)
+	{
+		UGameplayStatics::SpawnEmitterAttached(BeginningEffectComp, SphereComp);
+	}
+	
+	GetWorldTimerManager().SetTimer(TimerHandle_DelayedDetonate, this, &ASDashProjectile::Explode, DetonateDelay);
+}
+
+// // Called every frame
+// void ASDashProjectile::Tick(float DeltaTime)
+// {
+// 	Super::Tick(DeltaTime);
+// }
+//

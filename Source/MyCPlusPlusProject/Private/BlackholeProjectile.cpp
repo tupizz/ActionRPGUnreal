@@ -1,0 +1,161 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#include "BlackholeProjectile.h"
+#include "Components/SphereComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "Particles/ParticleSystemComponent.h" // For visual effects
+#include "PhysicsEngine/RadialForceComponent.h"
+#include "GameFramework/Actor.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/StaticMeshActor.h"
+#include "Kismet/GameplayStatics.h"
+
+
+// Sets default values
+ABlackholeProjectile::ABlackholeProjectile()
+{
+	// Enable Tick() to run every frame - can be disabled to improve performance
+	PrimaryActorTick.bCanEverTick = true;
+
+	// Match with VFX
+	InitialLifeSpan = 4.8f;
+	MinRadius = 5000.0f;
+	MaxRadius = 10000.0f;  // Initially you have 2000.0f, so this maintains compatibility
+	AnimationSpeed = 2.0f;
+	
+	// Create and setup the sphere collision component
+	SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
+	SphereComp->SetSphereRadius(100.0f);
+	
+	// Option 1: Set up collision directly without using profile
+	// Set up the collision sphere to respond to PhysicsActor
+	SphereComp->SetCollisionObjectType(ECC_WorldDynamic);
+	SphereComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	SphereComp->SetCollisionResponseToAllChannels(ECR_Ignore);
+
+	// Instead of using ECC_PhysicsBody, use the default object type for PhysicsActor
+	SphereComp->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
+	SphereComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	SphereComp->SetGenerateOverlapEvents(true);
+
+	
+	RootComponent = SphereComp; // Make the sphere the root component of this actor
+
+	// Create and setup the visual effects component
+	EffectComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("EffectComp"));
+	EffectComp->SetupAttachment(SphereComp); // Attach effects to the sphere component
+
+
+	// Create and configure the projectile movement component
+	MovementComp = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("MovementComp"));
+	MovementComp->InitialSpeed = 500.0f; // Slower speed for blackhole effect
+	MovementComp->bRotationFollowsVelocity = true; // Make projectile rotate to match its movement direction
+	MovementComp->bInitialVelocityInLocalSpace = true; // Use local space for initial velocity
+	MovementComp->ProjectileGravityScale = 0.0f; // No gravity effect
+	// Configure the projectile to never stop on impact
+	MovementComp->bShouldBounce = true; // Enable bouncing
+	MovementComp->Bounciness = 1.0f; // Full bounce (no velocity loss)
+	MovementComp->bSweepCollision = false;
+
+	RadialForceComp = CreateDefaultSubobject<URadialForceComponent>(TEXT("RadialForceComp"));
+	RadialForceComp->SetupAttachment(SphereComp);
+	RadialForceComp->bImpulseVelChange = true;
+	RadialForceComp->bAutoActivate = true;
+	RadialForceComp->ForceStrength = -500000.0f; // Negative for pull effect
+	RadialForceComp->RemoveObjectTypeToAffect(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+	RadialForceComp->bIgnoreOwningActor = true;
+}
+
+// Called when the game starts or when spawned
+void ABlackholeProjectile::BeginPlay()
+{
+	Super::BeginPlay();
+	RadialForceComp->Activate();
+
+	// Add to your BeginPlay() or in a developer console command
+	// Shows collision of all objects
+	GetWorld()->DebugDrawTraceTag = TEXT("CollisionDebug");
+
+	// Initialize animation with a value between min and max radius
+	RadialForceComp->Radius = (MinRadius + MaxRadius) * 0.5f;
+    
+	// Start with a random animation time to make multiple blackholes look different
+	AnimationTime = FMath::RandRange(0.0f, PI);
+
+	// Find all static mesh actors in the scene
+	TArray<AActor*> StaticMeshActors;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AStaticMeshActor::StaticClass(), StaticMeshActors);
+    
+	// Update their collision settings to generate overlaps with the blackhole
+	for (AActor* Actor : StaticMeshActors)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Found static mesh actor: %s"), *Actor->GetName());
+		UStaticMeshComponent* MeshComp = Cast<UStaticMeshComponent>(
+			Actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+            
+		if (MeshComp && MeshComp->GetCollisionProfileName() == FName("PhysicsActor"))
+		{
+			// Make these objects generate overlaps as well
+			MeshComp->SetGenerateOverlapEvents(true);
+		}
+	}
+}
+
+// Called every frame
+void ABlackholeProjectile::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	
+	// Animation to grow and shrink the influence of radial force over time
+	AnimationTime += DeltaTime * AnimationSpeed;
+    
+	// Calculate the current radius using a sine wave to create a smooth pulsating effect
+	// Sin returns values between -1 and 1, so we adjust it to get values between 0 and 1
+	float PulseFactor = (FMath::Sin(AnimationTime) + 1.0f) * 0.5f;
+    
+	// Interpolate between min and max radius
+	float CurrentRadius = FMath::Lerp(MinRadius, MaxRadius, PulseFactor);
+    
+	// Apply the new radius to the radial force component
+	RadialForceComp->Radius = CurrentRadius;
+		
+	// Visualize the force radius with a debug sphere
+	// DrawDebugSphere(
+	// 	GetWorld(),
+	// 	GetActorLocation(),
+	// 	SphereComp->GetScaledSphereRadius(),
+	// 	12,
+	// 	FColor::Red,
+	// 	false,
+	// 	-1.0f,
+	// 	1,
+	// 	1.0f
+	// );
+}
+
+void ABlackholeProjectile::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	SphereComp->OnComponentBeginOverlap.AddDynamic(this, &ABlackholeProjectile::OnOverlappedPhysicsActor);
+}
+
+void ABlackholeProjectile::OnOverlappedPhysicsActor(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	// Use Warning level instead of Log for better visibility
+	UE_LOG(LogTemp, Warning, TEXT("Blackhole hit by: %s"), *GetNameSafe(OtherActor));
+    
+	// Add an on-screen debug message to confirm the overlap
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, 
+			FString::Printf(TEXT("Blackhole hit: %s"), *GetNameSafe(OtherActor)));
+	}
+
+	if (OtherComp->IsSimulatingPhysics())
+	{
+		OtherActor->Destroy();
+	}
+}
+
