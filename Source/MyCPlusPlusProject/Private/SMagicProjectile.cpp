@@ -9,8 +9,8 @@
 // Constructor - Sets up the default properties and components of the magic projectile
 ASMagicProjectile::ASMagicProjectile()
 {
-	// Enable Tick() to run every frame - can be disabled to improve performance
-	PrimaryActorTick.bCanEverTick = true;
+	// // Enable Tick() to run every frame - can be disabled to improve performance
+	// PrimaryActorTick.bCanEverTick = true;
 
 	// Create and setup the sphere collision component
 	SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
@@ -23,7 +23,7 @@ ASMagicProjectile::ASMagicProjectile()
 
 	// Create and configure the projectile movement component
 	MovementComp = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("MovementComp"));
-	MovementComp->InitialSpeed = 1000.0f; // Set how fast the projectile moves
+	MovementComp->InitialSpeed = 2000.0f; // Set how fast the projectile moves
 	MovementComp->bRotationFollowsVelocity = true; // Make projectile rotate to match its movement direction
 	MovementComp->bInitialVelocityInLocalSpace = true; // Use local space for initial velocity
 }
@@ -36,10 +36,10 @@ void ASMagicProjectile::BeginPlay()
 	
 }
 
-// Called every frame to update the projectile
-void ASMagicProjectile::Tick(float DeltaTime)
-{
-	// Call parent class Tick first
-	Super::Tick(DeltaTime);
-
-}
+// // Called every frame to update the projectile
+// void ASMagicProjectile::Tick(float DeltaTime)
+// {
+// 	// Call parent class Tick first
+// 	Super::Tick(DeltaTime);
+//
+// }

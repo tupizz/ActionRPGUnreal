@@ -33,6 +33,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Attack")
 	TSubclassOf<AActor> ProjectileClass;
 
+	UPROPERTY(EditAnywhere, Category="Attack")
+	TSubclassOf<AActor> SpecialAttackClass;
+
+	UPROPERTY(EditAnywhere, Category="Dash")
+	TSubclassOf<AActor> DashClass;
+
 	UPROPERTY(VisibleAnywhere, Category="Attack")
 	USInteractionComponent *InteractionComp;
 
@@ -48,6 +54,12 @@ protected:
 	void PrimaryAttack_TimeElapsed();
 
 	void PrimaryAttack();
+
+	void SpecialAttack();
+
+	void SpecialAttack_TimeElapsed();
+
+	void Dash();
 
 public:	
 	// Called every frame

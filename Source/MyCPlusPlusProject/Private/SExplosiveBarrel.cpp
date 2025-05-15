@@ -51,7 +51,7 @@ ASExplosiveBarrel::ASExplosiveBarrel()
 void ASExplosiveBarrel::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	FVector NormalImpulse, const FHitResult& Hit)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Barrel hit by: %s"), *GetNameSafe(OtherActor));
+	UE_LOG(LogTemp, Log, TEXT("Barrel hit by: %s"), *GetNameSafe(OtherActor));
 	Explode();
 	Destroy();
 }
